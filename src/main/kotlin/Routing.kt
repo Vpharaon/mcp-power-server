@@ -2,6 +2,7 @@ package com.bazik
 
 import com.bazik.mcp.McpService
 import com.bazik.mcp.models.JsonRpcRequest
+import com.bazik.time.TimeService
 import com.bazik.weather.WeatherService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -27,7 +28,8 @@ fun Application.configureRouting() {
     }
 
     val weatherService = WeatherService(httpClient, apiKey)
-    val mcpService = McpService(weatherService)
+    val timeService = TimeService(httpClient, weatherService)
+    val mcpService = McpService(weatherService, timeService)
 
     routing {
         get("/") {

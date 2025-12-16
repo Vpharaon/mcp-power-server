@@ -1,10 +1,14 @@
 package com.bazik.mcp
 
 import com.bazik.mcp.models.*
+import com.bazik.time.TimeService
 import com.bazik.weather.WeatherService
 import kotlinx.serialization.json.*
 
-class McpService(private val weatherService: WeatherService) {
+class McpService(
+    private val weatherService: WeatherService,
+    private val timeService: TimeService
+) {
 
     private val tools = listOf(
         Tool(
@@ -38,6 +42,19 @@ class McpService(private val weatherService: WeatherService) {
                         type = "string",
                         description = "Temperature units",
                         enum = listOf("metric", "imperial", "standard")
+                    )
+                ),
+                required = listOf("city")
+            )
+        ),
+        Tool(
+            name = "get_city_time",
+            description = "Get current time, date, and timezone information for a specified city",
+            inputSchema = InputSchema(
+                properties = mapOf(
+                    "city" to PropertySchema(
+                        type = "string",
+                        description = "City name (e.g., 'London', 'New York', 'Tokyo')"
                     )
                 ),
                 required = listOf("city")
@@ -143,6 +160,13 @@ class McpService(private val weatherService: WeatherService) {
                 forecastResult.fold(
                     onSuccess = { forecast -> weatherService.formatForecast(forecast) },
                     onFailure = { e -> "Error fetching forecast: ${e.message}" }
+                )
+            }
+            "get_city_time" -> {
+                val timeResult = timeService.getCityTime(city)
+                timeResult.fold(
+                    onSuccess = { timeInfo -> timeService.formatCityTime(timeInfo) },
+                    onFailure = { e -> "Error fetching time: ${e.message}" }
                 )
             }
             else -> "Unknown tool: $toolName"
