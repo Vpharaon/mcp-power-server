@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mcp-weather-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-weather-server:latest
+    container_name: mcp-weather-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mcp-network:
+    driver: bridge
