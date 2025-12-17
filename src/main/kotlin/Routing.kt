@@ -104,7 +104,7 @@ fun Application.configureRouting() {
             logger.info("Notification service initialized (Email: ${notificationConfig.emailEnabled}, Telegram: ${notificationConfig.telegramEnabled})")
 
             // Scheduler with agent integration
-            val schedulerService = SchedulerService(reminderRepository, notificationService, agentIntegrationService)
+            val schedulerService = SchedulerService(reminderRepository, notificationService, timeService, agentIntegrationService)
 
             // Start scheduler - always start if reminders are enabled
             // Scheduler will check tasks and agent jobs every minute

@@ -15,7 +15,8 @@ data class Reminder(
     val updatedAt: String,
     // Agent task fields
     val agentTask: String? = null, // Задача для агента (если установлена)
-    val executeAt: String? = null, // Время выполнения задачи агентом (ISO format)
+    val executeAt: String? = null, // Время выполнения задачи агентом (ISO format - local time в city)
+    val city: String? = null, // Город для определения часового пояса (для executeAt)
     val lastExecutedAt: String? = null, // Последнее время выполнения агентом
     val executionResult: String? = null // Результат последнего выполнения
 )

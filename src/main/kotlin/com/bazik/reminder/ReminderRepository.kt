@@ -1,10 +1,13 @@
 package com.bazik.reminder
 
 import com.bazik.reminder.models.*
+import com.bazik.time.TimeService
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 object Reminders : Table("reminders") {
@@ -19,6 +22,7 @@ object Reminders : Table("reminders") {
     // Agent task fields
     val agentTask = text("agent_task").nullable()
     val executeAt = varchar("execute_at", 50).nullable()
+    val city = varchar("city", 255).nullable()
     val lastExecutedAt = varchar("last_executed_at", 50).nullable()
     val executionResult = text("execution_result").nullable()
 
@@ -50,7 +54,8 @@ class ReminderRepository(private val database: Database) {
         dueDate: String? = null,
         priority: ReminderPriority = ReminderPriority.MEDIUM,
         agentTask: String? = null,
-        executeAt: String? = null
+        executeAt: String? = null,
+        city: String? = null
     ): Reminder = transaction(database) {
         val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
@@ -64,6 +69,7 @@ class ReminderRepository(private val database: Database) {
             it[Reminders.updatedAt] = now
             it[Reminders.agentTask] = agentTask
             it[Reminders.executeAt] = executeAt
+            it[Reminders.city] = city
             it[Reminders.lastExecutedAt] = null
             it[Reminders.executionResult] = null
         } get Reminders.id
@@ -79,6 +85,7 @@ class ReminderRepository(private val database: Database) {
             updatedAt = now,
             agentTask = agentTask,
             executeAt = executeAt,
+            city = city,
             lastExecutedAt = null,
             executionResult = null
         )
@@ -209,8 +216,9 @@ class ReminderRepository(private val database: Database) {
         } > 0
     }
 
-    fun getPendingAgentTasks(): List<Reminder> = transaction(database) {
-        val now = LocalDateTime.now()
+    suspend fun getPendingAgentTasks(timeService: TimeService): List<Reminder> = transaction(database) {
+        // Московская временная зона (UTC+3)
+        val moscowZone = ZoneId.of("Europe/Moscow")
 
         Reminders.select {
             (Reminders.status eq ReminderStatus.ACTIVE.name) and
@@ -218,11 +226,38 @@ class ReminderRepository(private val database: Database) {
             (Reminders.executeAt.isNotNull())
         }.mapNotNull { row ->
             val reminder = rowToReminder(row)
+
+            // Пропускаем задачи, которые уже были выполнены
+            if (reminder.lastExecutedAt != null) {
+                return@mapNotNull null
+            }
+
             val executeAt = reminder.executeAt?.let {
                 LocalDateTime.parse(it, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            } ?: return@mapNotNull null
+
+            // Получаем текущее время в городе пользователя
+            val currentTime = if (reminder.city != null) {
+                // Используем TimeService для получения времени в указанном городе
+                val cityTimeResult = kotlinx.coroutines.runBlocking {
+                    timeService.getCityTime(reminder.city)
+                }
+
+                if (cityTimeResult.isSuccess) {
+                    val cityTimeInfo = cityTimeResult.getOrThrow()
+                    // Парсим currentDate и currentTime в LocalDateTime
+                    LocalDateTime.parse("${cityTimeInfo.currentDate}T${cityTimeInfo.currentTime}")
+                } else {
+                    // Fallback на московское время, если не удалось получить время города
+                    ZonedDateTime.now(moscowZone).toLocalDateTime()
+                }
+            } else {
+                // Если город не указан, используем московское время
+                ZonedDateTime.now(moscowZone).toLocalDateTime()
             }
+
             // Возвращаем задачу, если время выполнения наступило
-            if (executeAt != null && !executeAt.isAfter(now)) {
+            if (!executeAt.isAfter(currentTime)) {
                 reminder
             } else {
                 null
@@ -251,6 +286,7 @@ class ReminderRepository(private val database: Database) {
         updatedAt = row[Reminders.updatedAt],
         agentTask = row[Reminders.agentTask],
         executeAt = row[Reminders.executeAt],
+        city = row[Reminders.city],
         lastExecutedAt = row[Reminders.lastExecutedAt],
         executionResult = row[Reminders.executionResult]
     )

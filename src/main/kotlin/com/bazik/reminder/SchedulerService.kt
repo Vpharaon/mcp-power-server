@@ -1,6 +1,7 @@
 package com.bazik.reminder
 
 import com.bazik.agent.AgentIntegrationService
+import com.bazik.time.TimeService
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
@@ -10,6 +11,7 @@ import java.time.temporal.ChronoUnit
 class SchedulerService(
     private val reminderRepository: ReminderRepository,
     private val notificationService: NotificationService,
+    private val timeService: TimeService,
     private val agentIntegrationService: AgentIntegrationService? = null
 ) {
     private val logger = LoggerFactory.getLogger(SchedulerService::class.java)
@@ -119,7 +121,7 @@ class SchedulerService(
         }
 
         try {
-            val pendingTasks = reminderRepository.getPendingAgentTasks()
+            val pendingTasks = reminderRepository.getPendingAgentTasks(timeService)
 
             if (pendingTasks.isEmpty()) {
                 return
