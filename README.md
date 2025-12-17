@@ -473,12 +473,17 @@ Unix timestamp: 1702814445
 ```bash
 EMAIL_ENABLED=true
 EMAIL_SMTP_HOST=smtp.gmail.com
-EMAIL_SMTP_PORT=465
+EMAIL_SMTP_PORT=587  # Рекомендуется использовать 587 с STARTTLS
 EMAIL_USERNAME=your_email@gmail.com
-EMAIL_PASSWORD=your_app_password
+EMAIL_PASSWORD=your_app_password  # Используйте App Password, не обычный пароль!
 EMAIL_FROM=your_email@gmail.com
 EMAIL_TO=recipient@example.com
 ```
+
+**Важно:**
+- Используйте порт **587** с STARTTLS (рекомендуется) или порт **465** с SSL
+- Обязательно создайте App Password, обычный пароль не будет работать
+- Убедитесь, что Docker контейнер имеет доступ к интернету
 
 ### Telegram
 
@@ -631,6 +636,77 @@ docker-compose logs
 ```yaml
 ports:
   - "8081:8080"  # Используем 8081 вместо 8080
+```
+
+### Проблемы с отправкой Email
+
+#### Ошибка "SocketTimeoutException: Connect timed out" при отправке email
+
+Эта ошибка возникает при проблемах подключения к SMTP серверу. Возможные причины:
+
+**1. Неправильный порт или протокол**
+- Используйте порт **587** с STARTTLS (рекомендуется) вместо 465 с SSL
+- Обновите `.env`:
+```bash
+EMAIL_SMTP_PORT=587
+```
+- Пересоберите контейнер:
+```bash
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+**2. Неправильный App Password для Gmail**
+- НЕ используйте обычный пароль от Gmail
+- Создайте App Password:
+  1. Откройте https://myaccount.google.com/security
+  2. Включите "2-Step Verification"
+  3. Перейдите в "App passwords"
+  4. Создайте новый App Password для "Mail"
+  5. Скопируйте 16-значный пароль в `EMAIL_PASSWORD`
+
+**3. Блокировка файрволлом или сетью**
+- Проверьте доступ из контейнера:
+```bash
+docker exec mcp-weather-server ping smtp.gmail.com
+docker exec mcp-weather-server nc -zv smtp.gmail.com 587
+```
+
+**4. Docker сетевые настройки**
+- Убедитесь что контейнер имеет доступ к интернету
+- Проверьте настройки сети в `docker-compose.yml`
+
+**5. Тестирование конфигурации**
+
+После изменений протестируйте отправку:
+```bash
+# Отправить тестовое уведомление
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "test",
+    "method": "tools/call",
+    "params": {
+      "name": "send_test_notification",
+      "arguments": {}
+    }
+  }'
+
+# Проверьте логи на ошибки
+docker-compose logs -f | grep -i email
+```
+
+**Правильная конфигурация для Gmail:**
+```bash
+EMAIL_ENABLED=true
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587                    # Используйте 587, не 465!
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=xxxx xxxx xxxx xxxx     # App Password (16 символов)
+EMAIL_FROM=your_email@gmail.com
+EMAIL_TO=recipient@example.com
 ```
 
 ## Лицензия

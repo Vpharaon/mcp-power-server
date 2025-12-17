@@ -76,7 +76,21 @@ class NotificationService(
         email.hostName = config.emailSmtpHost
         email.setSmtpPort(config.emailSmtpPort)
         email.setAuthentication(config.emailUsername, config.emailPassword)
-        email.isSSLOnConnect = true
+
+        // Use STARTTLS instead of SSL for better compatibility with Gmail
+        if (config.emailSmtpPort == 587) {
+            email.isStartTLSEnabled = true
+            email.isStartTLSRequired = true
+            email.isSSLOnConnect = false
+        } else {
+            // For port 465, use SSL
+            email.isSSLOnConnect = true
+            email.sslSmtpPort = config.emailSmtpPort.toString()
+        }
+
+        // Add SSL check bypass for self-signed certificates (if needed)
+        email.setSSLCheckServerIdentity(true)
+
         email.setFrom(config.emailFrom)
         email.subject = "Reminders Summary - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
         email.setMsg(message)
