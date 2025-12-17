@@ -1,13 +1,22 @@
-# Weather MCP Server
+# Weather & Reminders MCP Server
 
-MCP (Model Context Protocol) сервер для получения данных о погоде через OpenWeatherMap API.
+MCP (Model Context Protocol) сервер для получения данных о погоде и управления напоминаниями с автоматическими уведомлениями.
 
 ## Описание
 
-Этот сервер реализует протокол MCP и предоставляет инструменты для получения:
+Этот сервер реализует протокол MCP и предоставляет инструменты для:
+
+**Погода:**
 - Текущей погоды для указанного города
 - 5-дневного прогноза погоды
 - Текущего времени, даты и часового пояса города
+
+**Напоминания (Reminders):**
+- Создание, просмотр и управление напоминаниями
+- SQLite база данных для хранения
+- Автоматические периодические уведомления на Email и/или Telegram
+- Сводки по напоминаниям (активные, просроченные, приоритетные)
+- Настраиваемое расписание уведомлений
 
 ## Возможности
 
@@ -209,11 +218,196 @@ DST active: No
 Unix timestamp: 1702814445
 ```
 
+### Reminder Tools
+
+#### 4. add_reminder
+
+Создать новое напоминание.
+
+**Параметры:**
+- `title` (обязательный): Краткое название задачи
+- `description` (обязательный): Детальное описание
+- `due_date` (опциональный): Срок выполнения в ISO формате (2024-12-17T15:30:00)
+- `priority` (опциональный): Приоритет - LOW, MEDIUM, HIGH, URGENT (по умолчанию MEDIUM)
+
+**Пример запроса:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "4",
+  "method": "tools/call",
+  "params": {
+    "name": "add_reminder",
+    "arguments": {
+      "title": "Team meeting",
+      "description": "Discuss Q4 results and plan for next quarter",
+      "due_date": "2024-12-20T14:00:00",
+      "priority": "HIGH"
+    }
+  }
+}
+```
+
+#### 5. list_reminders
+
+Получить список всех напоминаний или отфильтровать по статусу.
+
+**Параметры:**
+- `status` (опциональный): Фильтр по статусу - ACTIVE, COMPLETED, ARCHIVED
+
+**Пример запроса:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "5",
+  "method": "tools/call",
+  "params": {
+    "name": "list_reminders",
+    "arguments": {
+      "status": "ACTIVE"
+    }
+  }
+}
+```
+
+#### 6. get_reminder
+
+Получить детальную информацию о конкретном напоминании.
+
+**Параметры:**
+- `id` (обязательный): ID напоминания
+
+#### 7. complete_reminder
+
+Пометить напоминание как выполненное.
+
+**Параметры:**
+- `id` (обязательный): ID напоминания
+
+#### 8. delete_reminder
+
+Удалить напоминание.
+
+**Параметры:**
+- `id` (обязательный): ID напоминания
+
+#### 9. get_reminders_summary
+
+Получить сводку по всем напоминаниям (статистика, просроченные, приоритетные, предстоящие).
+
+**Пример запроса:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "9",
+  "method": "tools/call",
+  "params": {
+    "name": "get_reminders_summary",
+    "arguments": {}
+  }
+}
+```
+
+#### 10. set_notification_schedule
+
+Настроить автоматические периодические уведомления с сводкой по напоминаниям.
+
+**Параметры:**
+- `interval_minutes` (обязательный): Интервал в минутах (60 = каждый час, 1440 = раз в день)
+- `enabled` (опциональный): Включить/выключить уведомления (по умолчанию true)
+
+**Пример запроса:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "10",
+  "method": "tools/call",
+  "params": {
+    "name": "set_notification_schedule",
+    "arguments": {
+      "interval_minutes": 1440,
+      "enabled": true
+    }
+  }
+}
+```
+
+#### 11. get_notification_schedule
+
+Получить текущие настройки расписания уведомлений.
+
+#### 12. send_test_notification
+
+Отправить тестовое уведомление немедленно для проверки конфигурации.
+
 ## MCP Методы
 
 - `initialize` - Инициализация MCP соединения
 - `tools/list` - Получить список доступных инструментов
 - `tools/call` - Вызвать инструмент
+
+## Настройка уведомлений
+
+### Email (Gmail пример)
+
+1. Создайте App Password для Gmail:
+   - Перейдите в настройки Google Account → Security
+   - Включите 2-Step Verification
+   - Создайте App Password
+
+2. Настройте переменные в `.env`:
+```bash
+EMAIL_ENABLED=true
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=465
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+EMAIL_FROM=your_email@gmail.com
+EMAIL_TO=recipient@example.com
+```
+
+### Telegram
+
+1. Создайте бота через [@BotFather](https://t.me/botfather):
+   - Отправьте `/newbot`
+   - Следуйте инструкциям
+   - Сохраните токен бота
+
+2. Получите ваш Chat ID:
+   - Напишите что-нибудь боту
+   - Перейдите по ссылке: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+   - Найдите ваш `chat.id` в ответе
+
+3. Настройте переменные в `.env`:
+```bash
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+TELEGRAM_CHAT_ID=your_chat_id
+```
+
+## Использование агента 24/7
+
+Для работы сервера 24/7 с автоматическими уведомлениями:
+
+1. Разверните сервер на VPS (см. раздел "Развертывание на VPS")
+2. Настройте Email и/или Telegram уведомления
+3. Создайте напоминания через MCP инструменты
+4. Настройте расписание уведомлений:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "schedule",
+  "method": "tools/call",
+  "params": {
+    "name": "set_notification_schedule",
+    "arguments": {
+      "interval_minutes": 1440
+    }
+  }
+}
+```
+
+Сервер будет автоматически отправлять сводки по напоминаниям на указанный email или в Telegram чат!
 
 ## Тестирование
 
