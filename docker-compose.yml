@@ -11,8 +11,29 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Server
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - PORT=8080
+
+      # Reminders
+      - REMINDERS_ENABLED=${REMINDERS_ENABLED:-true}
+      - REMINDERS_DB_PATH=${REMINDERS_DB_PATH:-reminders.db}
+
+      # Email notifications
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST}
+      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - EMAIL_TO=${EMAIL_TO}
+
+      # Telegram notifications
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - reminder-data:/app/reminders.db
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
@@ -26,6 +47,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  reminder-data:
+    driver: local
 
 networks:
   mcp-network:

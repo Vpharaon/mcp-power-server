@@ -87,6 +87,120 @@ MCP (Model Context Protocol) сервер для получения данных
    docker-compose logs -f
    ```
 
+### Обновление и повторное развертывание в Docker
+
+При обновлении кода сервера база данных с напоминаниями автоматически сохраняется благодаря Docker volumes.
+
+#### Обновление сервера с сохранением данных
+
+```bash
+# 1. Получите последние изменения кода
+git pull
+
+# 2. Остановите контейнер (данные в volume сохранятся!)
+docker-compose down
+
+# 3. Пересоберите образ с новым кодом
+docker-compose build --no-cache
+
+# 4. Запустите обновленный контейнер
+docker-compose up -d
+
+# 5. Проверьте логи для подтверждения успешного запуска
+docker-compose logs -f
+```
+
+#### Важно: Сохранность данных
+
+- **База данных хранится в Docker volume** `reminder-data`
+- При выполнении `docker-compose down` контейнер удаляется, но **volume остается**
+- Все напоминания и настройки сохраняются между перезапусками
+- База автоматически создается при первом запуске
+
+#### Изменение схемы базы данных
+
+Exposed ORM автоматически обновляет схему при запуске:
+
+**При добавлении новых полей:**
+- Новые столбцы добавляются автоматически
+- Существующие данные сохраняются
+- Новые поля получают значения по умолчанию
+
+**При удалении полей:**
+- Exposed не удаляет столбцы автоматически (безопасность данных)
+- Старые столбцы остаются в БД, но не используются
+- Данные не теряются
+
+**Пример обновления с новыми полями:**
+```bash
+# У вас есть данные в БД
+docker-compose down
+
+# Обновили код (добавили новое поле в модель)
+git pull
+
+# Пересборка и запуск
+docker-compose build
+docker-compose up -d
+
+# Exposed автоматически добавит новый столбец
+# Все старые напоминания остаются на месте
+```
+
+#### Управление volumes
+
+```bash
+# Посмотреть список volumes
+docker volume ls
+
+# Просмотр информации о volume с базой данных
+docker volume inspect mcp-power-server_reminder-data
+
+# Создать бэкап базы данных
+docker run --rm \
+  -v mcp-power-server_reminder-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/reminders-backup-$(date +%Y%m%d).tar.gz -C /data .
+
+# Восстановить из бэкапа
+docker run --rm \
+  -v mcp-power-server_reminder-data:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/reminders-backup-20241217.tar.gz -C /data
+```
+
+#### Полная очистка (ВНИМАНИЕ: удалит все данные!)
+
+```bash
+# Удалить контейнер и volume (ВСЕ ДАННЫЕ БУДУТ ПОТЕРЯНЫ!)
+docker-compose down -v
+
+# Или вручную удалить только volume
+docker volume rm mcp-power-server_reminder-data
+```
+
+#### Миграция на другой сервер
+
+```bash
+# На старом сервере - создать бэкап
+docker run --rm \
+  -v mcp-power-server_reminder-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/reminders.tar.gz -C /data .
+
+# Скопировать reminders.tar.gz на новый сервер
+scp reminders.tar.gz user@new-server:/path/to/project/
+
+# На новом сервере - восстановить
+docker-compose up -d
+docker-compose down
+docker run --rm \
+  -v mcp-power-server_reminder-data:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/reminders.tar.gz -C /data
+docker-compose up -d
+```
+
 ### Развертывание на VPS
 
 1. Подключитесь к VPS:
