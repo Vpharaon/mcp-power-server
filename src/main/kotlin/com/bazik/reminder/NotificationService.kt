@@ -31,14 +31,19 @@ class NotificationService(
 
     suspend fun sendSummary(summary: ReminderSummary): Result<String> {
         val message = formatSummaryMessage(summary)
+        val subject = "Reminders Summary - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
+        return sendNotification(subject, message)
+    }
+
+    suspend fun sendNotification(subject: String, body: String): Result<String> {
         val results = mutableListOf<String>()
 
         // Send via Email
         if (config.emailEnabled) {
             try {
-                sendEmail(message)
+                sendEmail(subject, body)
                 results.add("Email sent successfully")
-                logger.info("Summary email sent successfully")
+                logger.info("Email notification sent successfully")
             } catch (e: Exception) {
                 logger.error("Failed to send email: ${e.message}", e)
                 results.add("Email failed: ${e.message}")
@@ -48,9 +53,9 @@ class NotificationService(
         // Send via Telegram
         if (config.telegramEnabled) {
             try {
-                val telegramResult = sendTelegram(message)
+                val telegramResult = sendTelegram(body)
                 results.add("Telegram sent successfully")
-                logger.info("Summary sent to Telegram successfully")
+                logger.info("Telegram notification sent successfully")
             } catch (e: Exception) {
                 logger.error("Failed to send Telegram message: ${e.message}", e)
                 results.add("Telegram failed: ${e.message}")
@@ -64,7 +69,7 @@ class NotificationService(
         }
     }
 
-    private fun sendEmail(message: String) {
+    private fun sendEmail(subject: String, message: String) {
         require(config.emailSmtpHost != null) { "Email SMTP host is not configured" }
         require(config.emailSmtpPort != null) { "Email SMTP port is not configured" }
         require(config.emailUsername != null) { "Email username is not configured" }
@@ -92,7 +97,7 @@ class NotificationService(
         email.setSSLCheckServerIdentity(true)
 
         email.setFrom(config.emailFrom)
-        email.subject = "Reminders Summary - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
+        email.subject = subject
         email.setMsg(message)
         email.addTo(config.emailTo)
         email.send()

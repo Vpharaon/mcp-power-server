@@ -12,7 +12,12 @@ data class Reminder(
     val priority: ReminderPriority = ReminderPriority.MEDIUM,
     val status: ReminderStatus = ReminderStatus.ACTIVE,
     val createdAt: String,
-    val updatedAt: String
+    val updatedAt: String,
+    // Agent task fields
+    val agentTask: String? = null, // Задача для агента (если установлена)
+    val executeAt: String? = null, // Время выполнения задачи агентом (ISO format)
+    val lastExecutedAt: String? = null, // Последнее время выполнения агентом
+    val executionResult: String? = null // Результат последнего выполнения
 )
 
 @Serializable

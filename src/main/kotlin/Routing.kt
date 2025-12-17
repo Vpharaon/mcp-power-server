@@ -1,5 +1,7 @@
 package com.bazik
 
+import com.bazik.agent.AgentIntegrationService
+import com.bazik.agent.AgentService
 import com.bazik.mcp.McpService
 import com.bazik.mcp.models.JsonRpcRequest
 import com.bazik.reminder.*
@@ -35,6 +37,32 @@ fun Application.configureRouting() {
     val weatherService = WeatherService(httpClient, apiKey)
     val timeService = TimeService(httpClient, weatherService)
 
+    val mcpService = McpService(weatherService, timeService, null) // Временно null, обновим позже
+
+    // Initialize AI agent if enabled
+    val agentIntegrationService: AgentIntegrationService? = try {
+        val agentEnabled = environment.config.propertyOrNull("agent.enabled")?.getString()?.toBoolean() ?: false
+
+        if (agentEnabled) {
+            val deepseekApiKey = environment.config.propertyOrNull("agent.deepseek.apiKey")?.getString()
+                ?: throw IllegalStateException("DeepSeek API key is not configured")
+            val baseUrl = environment.config.propertyOrNull("agent.deepseek.baseUrl")?.getString()
+                ?: "https://api.deepseek.com/v1"
+
+            logger.info("Initializing AI agent...")
+            val agentService = AgentService(httpClient, deepseekApiKey, baseUrl)
+            val integrationService = AgentIntegrationService(agentService, mcpService)
+            logger.info("AI agent initialized successfully")
+            integrationService
+        } else {
+            logger.info("AI agent is disabled")
+            null
+        }
+    } catch (e: Exception) {
+        logger.error("Failed to initialize AI agent: ${e.message}", e)
+        null
+    }
+
     // Initialize reminder services if enabled
     val reminderService: ReminderService? = try {
         val remindersEnabled = environment.config.propertyOrNull("reminders.enabled")?.getString()?.toBoolean() ?: false
@@ -69,14 +97,21 @@ fun Application.configureRouting() {
             val notificationService = NotificationService(httpClient, notificationConfig)
             logger.info("Notification service initialized (Email: ${notificationConfig.emailEnabled}, Telegram: ${notificationConfig.telegramEnabled})")
 
-            // Scheduler
-            val schedulerService = SchedulerService(reminderRepository, notificationService)
+            // Scheduler with agent integration
+            val schedulerService = SchedulerService(reminderRepository, notificationService, agentIntegrationService)
 
-            // Start scheduler if there's an active schedule
+            // Start scheduler - always start if reminders are enabled
+            // Scheduler will check tasks and agent jobs every minute
+            schedulerService.start()
+            logger.info("Scheduler started (checks every minute)")
+
             val existingSchedule = reminderRepository.getNotificationSchedule()
             if (existingSchedule != null && existingSchedule.isEnabled) {
-                schedulerService.start()
-                logger.info("Scheduler started with interval: ${existingSchedule.intervalMinutes} minutes")
+                logger.info("Notification schedule active: ${existingSchedule.intervalMinutes} minutes")
+            }
+
+            if (agentIntegrationService != null) {
+                logger.info("Agent task execution enabled - scheduler will process agent tasks")
             }
 
             // ReminderService
@@ -92,7 +127,8 @@ fun Application.configureRouting() {
         null
     }
 
-    val mcpService = McpService(weatherService, timeService, reminderService)
+    // Update MCP service with reminderService
+    val mcpServiceFinal = McpService(weatherService, timeService, reminderService)
 
     routing {
         get("/") {
@@ -101,16 +137,18 @@ fun Application.configureRouting() {
 
         get("/health") {
             val reminderStatus = if (reminderService != null) "enabled" else "disabled"
+            val agentStatus = if (agentIntegrationService != null) "enabled" else "disabled"
             call.respond(mapOf(
                 "status" to "healthy",
-                "reminders" to reminderStatus
+                "reminders" to reminderStatus,
+                "agent" to agentStatus
             ))
         }
 
         post("/mcp") {
             try {
                 val request = call.receive<JsonRpcRequest>()
-                val response = mcpService.handleRequest(request)
+                val response = mcpServiceFinal.handleRequest(request)
                 call.respond(response)
             } catch (e: Exception) {
                 call.respond(

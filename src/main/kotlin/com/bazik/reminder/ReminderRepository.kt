@@ -16,6 +16,11 @@ object Reminders : Table("reminders") {
     val status = varchar("status", 20)
     val createdAt = varchar("created_at", 50)
     val updatedAt = varchar("updated_at", 50)
+    // Agent task fields
+    val agentTask = text("agent_task").nullable()
+    val executeAt = varchar("execute_at", 50).nullable()
+    val lastExecutedAt = varchar("last_executed_at", 50).nullable()
+    val executionResult = text("execution_result").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -43,7 +48,9 @@ class ReminderRepository(private val database: Database) {
         title: String,
         description: String,
         dueDate: String? = null,
-        priority: ReminderPriority = ReminderPriority.MEDIUM
+        priority: ReminderPriority = ReminderPriority.MEDIUM,
+        agentTask: String? = null,
+        executeAt: String? = null
     ): Reminder = transaction(database) {
         val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
@@ -55,6 +62,10 @@ class ReminderRepository(private val database: Database) {
             it[Reminders.status] = ReminderStatus.ACTIVE.name
             it[Reminders.createdAt] = now
             it[Reminders.updatedAt] = now
+            it[Reminders.agentTask] = agentTask
+            it[Reminders.executeAt] = executeAt
+            it[Reminders.lastExecutedAt] = null
+            it[Reminders.executionResult] = null
         } get Reminders.id
 
         Reminder(
@@ -65,7 +76,11 @@ class ReminderRepository(private val database: Database) {
             priority = priority,
             status = ReminderStatus.ACTIVE,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            agentTask = agentTask,
+            executeAt = executeAt,
+            lastExecutedAt = null,
+            executionResult = null
         )
     }
 
@@ -194,6 +209,37 @@ class ReminderRepository(private val database: Database) {
         } > 0
     }
 
+    fun getPendingAgentTasks(): List<Reminder> = transaction(database) {
+        val now = LocalDateTime.now()
+
+        Reminders.select {
+            (Reminders.status eq ReminderStatus.ACTIVE.name) and
+            (Reminders.agentTask.isNotNull()) and
+            (Reminders.executeAt.isNotNull())
+        }.mapNotNull { row ->
+            val reminder = rowToReminder(row)
+            val executeAt = reminder.executeAt?.let {
+                LocalDateTime.parse(it, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            }
+            // Возвращаем задачу, если время выполнения наступило
+            if (executeAt != null && !executeAt.isAfter(now)) {
+                reminder
+            } else {
+                null
+            }
+        }
+    }
+
+    fun updateExecutionResult(id: Long, result: String): Boolean = transaction(database) {
+        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+
+        Reminders.update({ Reminders.id eq id }) {
+            it[lastExecutedAt] = now
+            it[executionResult] = result
+            it[updatedAt] = now
+        } > 0
+    }
+
     private fun rowToReminder(row: ResultRow): Reminder = Reminder(
         id = row[Reminders.id],
         title = row[Reminders.title],
@@ -202,7 +248,11 @@ class ReminderRepository(private val database: Database) {
         priority = ReminderPriority.valueOf(row[Reminders.priority]),
         status = ReminderStatus.valueOf(row[Reminders.status]),
         createdAt = row[Reminders.createdAt],
-        updatedAt = row[Reminders.updatedAt]
+        updatedAt = row[Reminders.updatedAt],
+        agentTask = row[Reminders.agentTask],
+        executeAt = row[Reminders.executeAt],
+        lastExecutedAt = row[Reminders.lastExecutedAt],
+        executionResult = row[Reminders.executionResult]
     )
 
     private fun rowToNotificationSchedule(row: ResultRow): NotificationSchedule = NotificationSchedule(

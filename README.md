@@ -1,6 +1,6 @@
-# Weather & Reminders MCP Server
+# Weather & Reminders MCP Server with AI Agent
 
-MCP (Model Context Protocol) сервер для получения данных о погоде и управления напоминаниями с автоматическими уведомлениями.
+MCP (Model Context Protocol) сервер для получения данных о погоде и управления напоминаниями с автоматическими уведомлениями и AI-агентом для выполнения задач.
 
 ## Описание
 
@@ -18,11 +18,20 @@ MCP (Model Context Protocol) сервер для получения данных
 - Сводки по напоминаниям (активные, просроченные, приоритетные)
 - Настраиваемое расписание уведомлений
 
+**AI Агент (DeepSeek):**
+- Автоматическое выполнение задач по расписанию
+- Интеграция с MCP tools (погода, напоминания, уведомления)
+- Scheduler проверяет базу каждую минуту
+- Агент анализирует задачу и использует доступные инструменты
+- Отправка результатов выполнения через Email/Telegram
+
 ## Возможности
 
 - Реализация MCP протокола (JSON-RPC 2.0)
 - Интеграция с OpenWeatherMap API
 - Поддержка различных единиц измерения (metric, imperial, standard)
+- AI агент с моделью DeepSeek для автоматического выполнения задач
+- Scheduler для автоматической проверки и выполнения задач (каждую минуту)
 - Контейнеризация с Docker
 - Health check endpoints
 - Автоматическое логирование
@@ -35,12 +44,15 @@ MCP (Model Context Protocol) сервер для получения данных
 - Docker & Docker Compose
 - OpenWeatherMap API (погода и координаты)
 - WorldTimeAPI (время и часовые пояса)
+- DeepSeek API (AI агент с function calling)
+- Exposed ORM + SQLite (база данных)
 
 ## Предварительные требования
 
 1. JDK 17 или выше (для локальной разработки)
 2. Docker и Docker Compose (для контейнерного развертывания)
 3. API ключ от OpenWeatherMap (получить на https://openweathermap.org/api)
+4. API ключ от DeepSeek (опционально, для AI агента - получить на https://platform.deepseek.com/)
 
 ## Установка и запуск
 
@@ -503,6 +515,100 @@ TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=your_chat_id
 ```
+
+### DeepSeek AI Agent
+
+1. Получите API ключ от DeepSeek:
+   - Зарегистрируйтесь на https://platform.deepseek.com/
+   - Создайте API ключ в разделе API Keys
+   - Скопируйте ключ
+
+2. Настройте переменные в `.env`:
+```bash
+AGENT_ENABLED=true
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1  # опционально
+```
+
+3. Убедитесь, что reminders включены (требуется для хранения задач):
+```bash
+REMINDERS_ENABLED=true
+```
+
+## Работа с AI Агентом
+
+### Как работает агент
+
+1. **Scheduler** проверяет базу данных каждую минуту
+2. Находит задачи с наступившим временем выполнения (`executeAt`)
+3. Передает задачу AI агенту DeepSeek
+4. Агент анализирует задачу и решает, какие MCP tools использовать
+5. Выполняет необходимые действия (проверка погоды, отправка уведомлений и т.д.)
+6. Результат сохраняется в базу данных
+7. Отправляется уведомление на Email/Telegram о результате выполнения
+
+### Создание задачи для агента
+
+Чтобы создать задачу для автоматического выполнения агентом, используйте напоминание с полями `agentTask` и `executeAt`.
+
+**Через прямой запрос к базе данных** (для разработки):
+```kotlin
+// Пример кода для добавления задачи агента
+reminderRepository.addReminder(
+    title = "Weather Check",
+    description = "Check weather in Moscow",
+    agentTask = "Check the current weather in Moscow and send a notification about it",
+    executeAt = "2024-12-18T15:00:00" // Время выполнения
+)
+```
+
+**Структура полей задачи:**
+- `title` - краткое название задачи
+- `description` - детальное описание
+- `agentTask` - инструкция для AI агента (что именно нужно сделать)
+- `executeAt` - время выполнения в формате ISO (yyyy-MM-ddTHH:mm:ss)
+- `lastExecutedAt` - автоматически заполняется после выполнения
+- `executionResult` - результат выполнения задачи агентом
+
+### Примеры задач для агента
+
+**1. Проверка погоды и отправка уведомления:**
+```kotlin
+agentTask = "Check the current weather in London and send me a notification with the temperature and conditions"
+executeAt = "2024-12-18T09:00:00"
+```
+
+**2. Ежедневная сводка по напоминаниям:**
+```kotlin
+agentTask = "Get reminders summary and send it via notification"
+executeAt = "2024-12-18T08:00:00"
+```
+
+**3. Комплексная задача:**
+```kotlin
+agentTask = "Check weather in Tokyo, and if it's raining, send me a notification about it"
+executeAt = "2024-12-18T07:00:00"
+```
+
+### Мониторинг выполнения
+
+Проверить результаты выполнения задач можно в логах:
+```bash
+# Docker
+docker-compose logs -f | grep -i agent
+
+# Или посмотреть все задачи в базе
+# Подключитесь к контейнеру и проверьте БД
+```
+
+### Отключение агента
+
+Для отключения AI агента установите в `.env`:
+```bash
+AGENT_ENABLED=false
+```
+
+Scheduler продолжит работать, но задачи агента выполняться не будут.
 
 ## Использование агента 24/7
 
