@@ -144,11 +144,12 @@ class SchedulerService(
 
                     result.onSuccess { resultText ->
                         logger.info("Agent task #${task.id} completed successfully")
+                        logger.info("Result: $resultText")
 
                         // Сохраняем результат в базу
                         reminderRepository.updateExecutionResult(task.id, resultText)
 
-                        // Отправляем уведомление о выполнении задачи
+                        // Отправляем уведомление о выполнении задачи (если настроено)
                         val notification = buildString {
                             appendLine("✅ Agent Task Completed")
                             appendLine()
@@ -159,10 +160,13 @@ class SchedulerService(
                             appendLine(resultText)
                         }
 
+                        // Пытаемся отправить уведомление, но не падаем если методы отключены
                         notificationService.sendNotification(
                             subject = "Agent Task Completed: ${task.title}",
                             body = notification
-                        )
+                        ).onFailure {
+                            logger.debug("Notification not sent for task #${task.id}: notification methods are disabled")
+                        }
                     }.onFailure { error ->
                         logger.error("Agent task #${task.id} failed: ${error.message}", error)
 
@@ -172,7 +176,7 @@ class SchedulerService(
                             "Error: ${error.message}"
                         )
 
-                        // Отправляем уведомление об ошибке
+                        // Отправляем уведомление об ошибке (если настроено)
                         val notification = buildString {
                             appendLine("❌ Agent Task Failed")
                             appendLine()
@@ -180,10 +184,13 @@ class SchedulerService(
                             appendLine("Error: ${error.message}")
                         }
 
+                        // Пытаемся отправить уведомление, но не падаем если методы отключены
                         notificationService.sendNotification(
                             subject = "Agent Task Failed: ${task.title}",
                             body = notification
-                        )
+                        ).onFailure {
+                            logger.debug("Notification not sent for task #${task.id}: notification methods are disabled")
+                        }
                     }
                 } catch (e: Exception) {
                     logger.error("Error processing agent task #${task.id}: ${e.message}", e)

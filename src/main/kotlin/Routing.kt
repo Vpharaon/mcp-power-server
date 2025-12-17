@@ -80,6 +80,12 @@ fun Application.configureRouting() {
             logger.info("Reminder repository initialized")
 
             // Notification config
+            val telegramEnabledStr = environment.config.propertyOrNull("notifications.telegram.enabled")?.getString()
+            val telegramBotToken = environment.config.propertyOrNull("notifications.telegram.botToken")?.getString()
+            val telegramChatId = environment.config.propertyOrNull("notifications.telegram.chatId")?.getString()
+
+            logger.info("Telegram config: enabled='$telegramEnabledStr', hasToken=${telegramBotToken != null}, hasChatId=${telegramChatId != null}")
+
             val notificationConfig = NotificationConfig(
                 emailEnabled = environment.config.propertyOrNull("notifications.email.enabled")?.getString()?.toBoolean() ?: false,
                 emailSmtpHost = environment.config.propertyOrNull("notifications.email.smtp.host")?.getString(),
@@ -88,9 +94,9 @@ fun Application.configureRouting() {
                 emailPassword = environment.config.propertyOrNull("notifications.email.password")?.getString(),
                 emailFrom = environment.config.propertyOrNull("notifications.email.from")?.getString(),
                 emailTo = environment.config.propertyOrNull("notifications.email.to")?.getString(),
-                telegramEnabled = environment.config.propertyOrNull("notifications.telegram.enabled")?.getString()?.toBoolean() ?: false,
-                telegramBotToken = environment.config.propertyOrNull("notifications.telegram.botToken")?.getString(),
-                telegramChatId = environment.config.propertyOrNull("notifications.telegram.chatId")?.getString()
+                telegramEnabled = telegramEnabledStr?.toBoolean() ?: false,
+                telegramBotToken = telegramBotToken,
+                telegramChatId = telegramChatId
             )
 
             // Notification service
