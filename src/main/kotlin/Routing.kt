@@ -18,9 +18,20 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.Database
 import org.slf4j.LoggerFactory
+import java.time.ZoneId
 
 fun Application.configureRouting() {
     val logger = LoggerFactory.getLogger("Routing")
+
+    // Read timezone configuration
+    val defaultTimezone = environment.config.propertyOrNull("timezone.default")?.getString() ?: "Europe/Moscow"
+    val defaultZoneId = try {
+        ZoneId.of(defaultTimezone)
+    } catch (e: Exception) {
+        logger.warn("Invalid timezone '$defaultTimezone', falling back to Europe/Moscow")
+        ZoneId.of("Europe/Moscow")
+    }
+    logger.info("Using timezone: $defaultZoneId")
 
     val apiKey = environment.config.propertyOrNull("weather.apiKey")?.getString()
         ?: throw IllegalStateException("OpenWeatherMap API key is not configured")
@@ -76,7 +87,7 @@ fun Application.configureRouting() {
             logger.info("Database connected: $dbPath")
 
             // Repository
-            val reminderRepository = ReminderRepository(database)
+            val reminderRepository = ReminderRepository(database, defaultZoneId)
             logger.info("Reminder repository initialized")
 
             // Notification config
@@ -104,7 +115,7 @@ fun Application.configureRouting() {
             logger.info("Notification service initialized (Email: ${notificationConfig.emailEnabled}, Telegram: ${notificationConfig.telegramEnabled})")
 
             // Scheduler with agent integration
-            val schedulerService = SchedulerService(reminderRepository, notificationService, timeService, agentIntegrationService)
+            val schedulerService = SchedulerService(reminderRepository, notificationService, timeService, defaultZoneId, agentIntegrationService)
 
             // Start scheduler - always start if reminders are enabled
             // Scheduler will check tasks and agent jobs every minute

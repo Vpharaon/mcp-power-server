@@ -5,6 +5,8 @@ import com.bazik.time.TimeService
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -12,6 +14,7 @@ class SchedulerService(
     private val reminderRepository: ReminderRepository,
     private val notificationService: NotificationService,
     private val timeService: TimeService,
+    private val defaultZoneId: ZoneId = ZoneId.of("Europe/Moscow"),
     private val agentIntegrationService: AgentIntegrationService? = null
 ) {
     private val logger = LoggerFactory.getLogger(SchedulerService::class.java)
@@ -56,7 +59,7 @@ class SchedulerService(
             return
         }
 
-        val now = LocalDateTime.now()
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime()
         val shouldSend = if (schedule.lastSentAt == null) {
             true
         } else {
@@ -106,7 +109,7 @@ class SchedulerService(
             overdueReminders = overdueReminders.size,
             upcomingReminders = upcomingReminders,
             highPriorityReminders = highPriorityReminders,
-            generatedAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            generatedAt = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         )
     }
 
@@ -156,7 +159,7 @@ class SchedulerService(
                             appendLine("✅ Agent Task Completed")
                             appendLine()
                             appendLine("Task: ${task.title}")
-                            appendLine("Executed at: ${LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}")
+                            appendLine("Executed at: ${ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}")
                             appendLine()
                             appendLine("Result:")
                             appendLine(resultText)

@@ -40,7 +40,10 @@ object NotificationSchedules : Table("notification_schedules") {
     override val primaryKey = PrimaryKey(id)
 }
 
-class ReminderRepository(private val database: Database) {
+class ReminderRepository(
+    private val database: Database,
+    private val defaultZoneId: ZoneId = ZoneId.of("Europe/Moscow")
+) {
 
     init {
         transaction(database) {
@@ -57,7 +60,7 @@ class ReminderRepository(private val database: Database) {
         executeAt: String? = null,
         city: String? = null
     ): Reminder = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         val id = Reminders.insert {
             it[Reminders.title] = title
@@ -107,7 +110,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun updateReminderStatus(id: Long, status: ReminderStatus): Boolean = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         Reminders.update({ Reminders.id eq id }) {
             it[Reminders.status] = status.name
@@ -120,7 +123,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun getOverdueReminders(): List<Reminder> = transaction(database) {
-        val now = LocalDateTime.now()
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime()
 
         Reminders.select {
             (Reminders.status eq ReminderStatus.ACTIVE.name) and
@@ -139,7 +142,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun getUpcomingReminders(hours: Int = 24): List<Reminder> = transaction(database) {
-        val now = LocalDateTime.now()
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime()
         val future = now.plusHours(hours.toLong())
 
         Reminders.select {
@@ -169,7 +172,7 @@ class ReminderRepository(private val database: Database) {
     // Notification Schedule methods
 
     fun setNotificationSchedule(intervalMinutes: Int, isEnabled: Boolean = true): NotificationSchedule = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         // Delete existing schedule (we'll keep only one)
         NotificationSchedules.deleteAll()
@@ -199,7 +202,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun updateLastSentAt(scheduleId: Long): Boolean = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         NotificationSchedules.update({ NotificationSchedules.id eq scheduleId }) {
             it[lastSentAt] = now
@@ -208,7 +211,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun updateScheduleEnabled(scheduleId: Long, isEnabled: Boolean): Boolean = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         NotificationSchedules.update({ NotificationSchedules.id eq scheduleId }) {
             it[NotificationSchedules.isEnabled] = isEnabled
@@ -217,9 +220,6 @@ class ReminderRepository(private val database: Database) {
     }
 
     suspend fun getPendingAgentTasks(timeService: TimeService): List<Reminder> = transaction(database) {
-        // Московская временная зона (UTC+3)
-        val moscowZone = ZoneId.of("Europe/Moscow")
-
         Reminders.select {
             (Reminders.status eq ReminderStatus.ACTIVE.name) and
             (Reminders.agentTask.isNotNull()) and
@@ -248,12 +248,12 @@ class ReminderRepository(private val database: Database) {
                     // Парсим currentDate и currentTime в LocalDateTime
                     LocalDateTime.parse("${cityTimeInfo.currentDate}T${cityTimeInfo.currentTime}")
                 } else {
-                    // Fallback на московское время, если не удалось получить время города
-                    ZonedDateTime.now(moscowZone).toLocalDateTime()
+                    // Fallback на настроенный часовой пояс, если не удалось получить время города
+                    ZonedDateTime.now(defaultZoneId).toLocalDateTime()
                 }
             } else {
-                // Если город не указан, используем московское время
-                ZonedDateTime.now(moscowZone).toLocalDateTime()
+                // Если город не указан, используем настроенный часовой пояс
+                ZonedDateTime.now(defaultZoneId).toLocalDateTime()
             }
 
             // Возвращаем задачу, если время выполнения наступило
@@ -266,7 +266,7 @@ class ReminderRepository(private val database: Database) {
     }
 
     fun updateExecutionResult(id: Long, result: String): Boolean = transaction(database) {
-        val now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         Reminders.update({ Reminders.id eq id }) {
             it[lastExecutedAt] = now
