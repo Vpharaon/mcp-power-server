@@ -32,7 +32,7 @@ class AgentIntegrationService(
      * 4. Сформировать summary по строгому шаблону
      * 5. Отправить summary в Telegram
      */
-    suspend fun processTaskNotification(task: Task): Result<String> {
+    /*suspend fun processTaskNotification(task: Task): Result<String> {
         return try {
             logger.info("Processing task notification for task #${task.id}")
 
@@ -83,44 +83,7 @@ class AgentIntegrationService(
             logger.error("Error processing task notification: ${e.message}", e)
             Result.failure(e)
         }
-    }
-
-    /**
-     * Извлечь название города из задачи
-     * Простая эвристика: ищем слова с большой буквы (кириллица или латиница)
-     */
-    private fun extractCityFromTask(task: Task): String? {
-        val text = "${task.title} ${task.description}"
-
-        // Regex для поиска слов с большой буквы (кириллица)
-        val cyrillicPattern = Regex("""(?:^|[^\p{L}])([А-ЯЁ][а-яё]{2,})(?:[^\p{L}]|$)""")
-        val cyrillicMatches = cyrillicPattern.findAll(text)
-
-        // Список известных городов (можно расширить)
-        val knownCities = setOf(
-            "Москва", "Санкт-Петербург", "Петербург", "Казань", "Новосибирск",
-            "Екатеринбург", "Нижний", "Челябинск", "Самара", "Омск", "Ростов",
-            "Уфа", "Красноярск", "Воронеж", "Пермь", "Волгоград", "Краснодар",
-            "Саратов", "Тюмень", "Тольятти", "Ижевск", "Барнаул", "Ульяновск",
-            "Moscow", "Petersburg", "Kazan", "Novosibirsk"
-        )
-
-        // Ищем совпадение с известными городами
-        for (match in cyrillicMatches) {
-            val word = match.groupValues[1]
-            if (knownCities.contains(word)) {
-                return word
-            }
-        }
-
-        // Если точного совпадения нет, возвращаем первое слово с большой буквы (если есть)
-        val firstMatch = cyrillicMatches.firstOrNull()
-        if (firstMatch != null) {
-            return firstMatch.groupValues[1]
-        }
-
-        return null
-    }
+    }*/
 
     /**
      * Получить погоду для города через MCP
@@ -204,10 +167,10 @@ class AgentIntegrationService(
         val dateTime = LocalDateTime.parse(task.reminderDateTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
         return buildString {
-            appendLine("🔔 Напоминание о задаче!")
-            appendLine("📌 Заголовок: ${task.title}")
-            appendLine("📅 Дата: ${dateTime.toLocalDate()}")
-            appendLine("⏰ Время: ${dateTime.toLocalTime()}")
+            //appendLine("🔔 Напоминание о задаче!")
+            appendLine("📌 ${task.title}")
+            appendLine("📅 ${dateTime.toLocalDate()}")
+            appendLine("⏰ ${dateTime.toLocalTime()}")
             appendLine("📝 Текст: ${task.description}")
             appendLine("🌤️ Погода в $city: $weather")
             appendLine("🕐 Время в $city: $time")
@@ -225,9 +188,9 @@ class AgentIntegrationService(
 
         return buildString {
             appendLine("🔔 Напоминание о задаче!")
-            appendLine("📌 Заголовок: ${task.title}")
-            appendLine("📅 Дата: ${dateTime.toLocalDate()}")
-            appendLine("⏰ Время: ${dateTime.toLocalTime()}")
+            appendLine("📌 ${task.title}")
+            appendLine("📅 ${dateTime.toLocalDate()}")
+            appendLine("⏰ ${dateTime.toLocalTime()}")
             appendLine("📝 Текст: ${task.description}")
             appendLine("🌤️ Погода в городах РФ:")
             citiesData.forEach { (city, data) ->
@@ -241,20 +204,20 @@ class AgentIntegrationService(
      * Обработка задачи агентом с возможностью вызова MCP tools
      * (старый метод, сохранен для совместимости)
      */
-    suspend fun executeTask(taskDescription: String): Result<String> {
+    suspend fun executeTask(task: Task): Result<String> {
         return try {
-            logger.info("Executing task with agent: $taskDescription")
+            logger.info("Executing task with agent: ${task.description}")
 
             // Получаем список доступных tools из MCP
             val availableTools = getAvailableMcpTools()
 
             if (availableTools.isEmpty()) {
                 logger.warn("No MCP tools available for agent")
-                return agentService.chat(taskDescription)
+                return agentService.chat(task.description)
             }
 
             // Передаем задачу агенту с доступными tools
-            val agentResult = agentService.processTask(taskDescription, availableTools)
+            val agentResult = agentService.processTask(task.description, availableTools)
 
             agentResult.fold(
                 onSuccess = { taskResult ->

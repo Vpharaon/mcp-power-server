@@ -108,7 +108,7 @@ class SchedulerService(
                     logger.info("Processing task notification for #${task.id}: ${task.title}")
 
                     // Обработать задачу через агента (формирование и отправка уведомления)
-                    val result = agentIntegrationService.processTaskNotification(task)
+                    val result = agentIntegrationService.executeTask(task)//processTaskNotification(task)
 
                     result.onSuccess { summary ->
                         logger.info("Task notification #${task.id} sent successfully")

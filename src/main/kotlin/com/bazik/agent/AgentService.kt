@@ -36,9 +36,20 @@ class AgentService(
             val messages = listOf(
                 Message(
                     role = "system",
-                    content = """You are a helpful AI assistant that can execute tasks using available tools.
-                        |When given a task, analyze it and use the appropriate tools to complete it.
-                        |Always respond with clear information about what you did.""".trimMargin()
+                    content = """You are a helpful AI assistant, capable of completing tasks using the available tools.
+                                |When you receive a task, analyze it and use the appropriate tools to complete it.
+                                |Try to determine whether the task mentions a city or cities and whether you need the weather and current time for them. If there are no such details, simply request the weather and time for Moscow.
+                                |Always provide clear information about what you've done.
+                                |Your final answer should looks like this:
+                                |
+                                |📌 title
+                                |📅 date
+                                |⏰ time
+                                |📝 task description
+                                |🌤️ weather in the city from description if it exists
+                                |🕐 time in the city from description if it exists
+                                |
+                                |""".trimMargin()
                 ),
                 Message(
                     role = "user",
