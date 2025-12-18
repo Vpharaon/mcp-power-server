@@ -15,25 +15,21 @@ services:
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - PORT=8080
 
-      # Reminders
-      - REMINDERS_ENABLED=${REMINDERS_ENABLED:-true}
-      - REMINDERS_DB_PATH=${REMINDERS_DB_PATH:-reminders.db}
-
-      # Email notifications
-      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
-      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST}
-      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT}
-      - EMAIL_USERNAME=${EMAIL_USERNAME}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
-      - EMAIL_FROM=${EMAIL_FROM}
-      - EMAIL_TO=${EMAIL_TO}
+      # Tasks
+      - TASKS_ENABLED=${TASKS_ENABLED:-true}
+      - TASKS_DB_PATH=${TASKS_DB_PATH:-tasks.db}
 
       # Telegram notifications
       - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+
+      # AI Agent
+      - AGENT_ENABLED=${AGENT_ENABLED:-false}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
     volumes:
-      - reminder-data:/data
+      - task-data:/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
@@ -49,7 +45,7 @@ services:
         max-file: "3"
 
 volumes:
-  reminder-data:
+  task-data:
     driver: local
 
 networks:

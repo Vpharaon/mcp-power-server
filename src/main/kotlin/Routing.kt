@@ -50,13 +50,13 @@ fun Application.configureRouting() {
 
     // Initialize task services first (before MCP and Agent)
     val taskService: com.bazik.reminder.TaskService? = try {
-        val tasksEnabled = environment.config.propertyOrNull("reminders.enabled")?.getString()?.toBoolean() ?: false
+        val tasksEnabled = environment.config.propertyOrNull("tasks.enabled")?.getString()?.toBoolean() ?: false
 
         if (tasksEnabled) {
             logger.info("Initializing task services...")
 
             // Database setup
-            val dbPath = environment.config.propertyOrNull("reminders.database.path")?.getString() ?: "tasks.db"
+            val dbPath = environment.config.propertyOrNull("tasks.database.path")?.getString() ?: "tasks.db"
             val database = Database.connect("jdbc:sqlite:$dbPath", "org.sqlite.JDBC")
             logger.info("Database connected: $dbPath")
 
