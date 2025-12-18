@@ -1,6 +1,6 @@
 package com.bazik.reminder
 
-import com.bazik.reminder.models.ReminderSummary
+import com.bazik.reminder.models.TaskSummary
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -29,9 +29,9 @@ class NotificationService(
 ) {
     private val logger = LoggerFactory.getLogger(NotificationService::class.java)
 
-    suspend fun sendSummary(summary: ReminderSummary): Result<String> {
+    suspend fun sendSummary(summary: TaskSummary): Result<String> {
         val message = formatSummaryMessage(summary)
-        val subject = "Reminders Summary - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
+        val subject = "Tasks Summary - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
         return sendNotification(subject, message)
     }
 
@@ -125,45 +125,41 @@ class NotificationService(
         }
     }
 
-    private fun formatSummaryMessage(summary: ReminderSummary): String {
+    private fun formatSummaryMessage(summary: TaskSummary): String {
         val sb = StringBuilder()
 
-        sb.appendLine("📋 **REMINDERS SUMMARY**")
+        sb.appendLine("📋 **TASKS SUMMARY**")
         sb.appendLine("Generated at: ${summary.generatedAt}")
         sb.appendLine()
         sb.appendLine("**Statistics:**")
-        sb.appendLine("• Total reminders: ${summary.totalReminders}")
-        sb.appendLine("• Active: ${summary.activeReminders}")
-        sb.appendLine("• Completed: ${summary.completedReminders}")
-        sb.appendLine("• Overdue: ${summary.overdueReminders}")
+        sb.appendLine("• Total tasks: ${summary.totalTasks}")
+        sb.appendLine("• Active: ${summary.activeTasks}")
+        sb.appendLine("• Completed: ${summary.completedTasks}")
+        sb.appendLine("• Overdue: ${summary.overdueTasks}")
         sb.appendLine()
 
-        if (summary.highPriorityReminders.isNotEmpty()) {
-            sb.appendLine("🔴 **HIGH PRIORITY REMINDERS:**")
-            summary.highPriorityReminders.forEach { reminder ->
-                sb.appendLine("  • [${reminder.priority}] ${reminder.title}")
-                if (reminder.dueDate != null) {
-                    sb.appendLine("    Due: ${formatDate(reminder.dueDate)}")
-                }
-                sb.appendLine("    ${reminder.description}")
+        if (summary.highPriorityTasks.isNotEmpty()) {
+            sb.appendLine("🔴 **HIGH PRIORITY TASKS:**")
+            summary.highPriorityTasks.forEach { task ->
+                sb.appendLine("  • [${task.importance}] ${task.title}")
+                sb.appendLine("    Reminder: ${formatDate(task.reminderDateTime)}")
+                sb.appendLine("    ${task.description}")
                 sb.appendLine()
             }
         }
 
-        if (summary.upcomingReminders.isNotEmpty()) {
-            sb.appendLine("📅 **UPCOMING REMINDERS (Next 24 hours):**")
-            summary.upcomingReminders.forEach { reminder ->
-                sb.appendLine("  • ${reminder.title}")
-                if (reminder.dueDate != null) {
-                    sb.appendLine("    Due: ${formatDate(reminder.dueDate)}")
-                }
-                sb.appendLine("    ${reminder.description}")
+        if (summary.upcomingTasks.isNotEmpty()) {
+            sb.appendLine("📅 **UPCOMING TASKS (Next 24 hours):**")
+            summary.upcomingTasks.forEach { task ->
+                sb.appendLine("  • ${task.title}")
+                sb.appendLine("    Reminder: ${formatDate(task.reminderDateTime)}")
+                sb.appendLine("    ${task.description}")
                 sb.appendLine()
             }
         }
 
-        if (summary.activeReminders == 0) {
-            sb.appendLine("✅ All done! No active reminders.")
+        if (summary.activeTasks == 0) {
+            sb.appendLine("✅ All done! No active tasks.")
         }
 
         return sb.toString()

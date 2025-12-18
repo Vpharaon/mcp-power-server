@@ -3,31 +3,35 @@ package com.bazik.reminder.models
 import kotlinx.serialization.Serializable
 import java.time.LocalDateTime
 
+/**
+ * Основная модель задачи (Task)
+ * Переименовано из Reminder для соответствия спецификации
+ */
 @Serializable
-data class Reminder(
+data class Task(
     val id: Long = 0,
     val title: String,
     val description: String,
-    val dueDate: String? = null, // ISO format: 2024-12-17T15:30:00
-    val priority: ReminderPriority = ReminderPriority.MEDIUM,
-    val status: ReminderStatus = ReminderStatus.ACTIVE,
+    val reminderDateTime: String, // ISO format: 2024-12-17T15:30:00 - время сервера
+    val recurrence: TaskRecurrence? = null, // Повторение: DAILY, WEEKLY, MONTHLY
+    val importance: TaskImportance = TaskImportance.MEDIUM,
+    val isCompleted: Boolean = false,
     val createdAt: String,
-    val updatedAt: String,
-    // Agent task fields
-    val agentTask: String? = null, // Задача для агента (если установлена)
-    val executeAt: String? = null, // Время выполнения задачи агентом (ISO format - local time в city)
-    val city: String? = null, // Город для определения часового пояса (для executeAt)
-    val lastExecutedAt: String? = null, // Последнее время выполнения агентом
-    val executionResult: String? = null // Результат последнего выполнения
+    val updatedAt: String
 )
 
 @Serializable
-enum class ReminderPriority {
+enum class TaskImportance {
     LOW, MEDIUM, HIGH, URGENT
 }
 
 @Serializable
-enum class ReminderStatus {
+enum class TaskRecurrence {
+    DAILY, WEEKLY, MONTHLY
+}
+
+@Serializable
+enum class TaskStatus {
     ACTIVE, COMPLETED, ARCHIVED
 }
 
@@ -42,12 +46,12 @@ data class NotificationSchedule(
 )
 
 @Serializable
-data class ReminderSummary(
-    val totalReminders: Int,
-    val activeReminders: Int,
-    val completedReminders: Int,
-    val overdueReminders: Int,
-    val upcomingReminders: List<Reminder>,
-    val highPriorityReminders: List<Reminder>,
+data class TaskSummary(
+    val totalTasks: Int,
+    val activeTasks: Int,
+    val completedTasks: Int,
+    val overdueTasks: Int,
+    val upcomingTasks: List<Task>,
+    val highPriorityTasks: List<Task>,
     val generatedAt: String
 )

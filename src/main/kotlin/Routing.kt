@@ -48,47 +48,21 @@ fun Application.configureRouting() {
     val weatherService = WeatherService(httpClient, apiKey)
     val timeService = TimeService(httpClient, weatherService)
 
-    val mcpService = McpService(weatherService, timeService, null) // Временно null, обновим позже
+    // Initialize task services first (before MCP and Agent)
+    val taskService: com.bazik.reminder.TaskService? = try {
+        val tasksEnabled = environment.config.propertyOrNull("reminders.enabled")?.getString()?.toBoolean() ?: false
 
-    // Initialize AI agent if enabled
-    val agentIntegrationService: AgentIntegrationService? = try {
-        val agentEnabled = environment.config.propertyOrNull("agent.enabled")?.getString()?.toBoolean() ?: false
-
-        if (agentEnabled) {
-            val deepseekApiKey = environment.config.propertyOrNull("agent.deepseek.apiKey")?.getString()
-                ?: throw IllegalStateException("DeepSeek API key is not configured")
-            val baseUrl = environment.config.propertyOrNull("agent.deepseek.baseUrl")?.getString()
-                ?: "https://api.deepseek.com/v1"
-
-            logger.info("Initializing AI agent...")
-            val agentService = AgentService(httpClient, deepseekApiKey, baseUrl)
-            val integrationService = AgentIntegrationService(agentService, mcpService)
-            logger.info("AI agent initialized successfully")
-            integrationService
-        } else {
-            logger.info("AI agent is disabled")
-            null
-        }
-    } catch (e: Exception) {
-        logger.error("Failed to initialize AI agent: ${e.message}", e)
-        null
-    }
-
-    // Initialize reminder services if enabled
-    val reminderService: ReminderService? = try {
-        val remindersEnabled = environment.config.propertyOrNull("reminders.enabled")?.getString()?.toBoolean() ?: false
-
-        if (remindersEnabled) {
-            logger.info("Initializing reminder services...")
+        if (tasksEnabled) {
+            logger.info("Initializing task services...")
 
             // Database setup
-            val dbPath = environment.config.propertyOrNull("reminders.database.path")?.getString() ?: "reminders.db"
+            val dbPath = environment.config.propertyOrNull("reminders.database.path")?.getString() ?: "tasks.db"
             val database = Database.connect("jdbc:sqlite:$dbPath", "org.sqlite.JDBC")
             logger.info("Database connected: $dbPath")
 
             // Repository
-            val reminderRepository = ReminderRepository(database, defaultZoneId)
-            logger.info("Reminder repository initialized")
+            val taskRepository = com.bazik.reminder.TaskRepository(database, defaultZoneId)
+            logger.info("Task repository initialized")
 
             // Notification config
             val telegramEnabledStr = environment.config.propertyOrNull("notifications.telegram.enabled")?.getString()
@@ -114,38 +88,70 @@ fun Application.configureRouting() {
             val notificationService = NotificationService(httpClient, notificationConfig)
             logger.info("Notification service initialized (Email: ${notificationConfig.emailEnabled}, Telegram: ${notificationConfig.telegramEnabled})")
 
-            // Scheduler with agent integration
-            val schedulerService = SchedulerService(reminderRepository, notificationService, timeService, defaultZoneId, agentIntegrationService)
+            // Временно создаем MCP и Agent без финального сервиса
+            val mcpServiceTemp = McpService(weatherService, timeService, null)
 
-            // Start scheduler - always start if reminders are enabled
-            // Scheduler will check tasks and agent jobs every minute
+            // Initialize AI agent with notification service
+            val agentIntegrationService: AgentIntegrationService? = try {
+                val agentEnabled = environment.config.propertyOrNull("agent.enabled")?.getString()?.toBoolean() ?: false
+
+                if (agentEnabled) {
+                    val deepseekApiKey = environment.config.propertyOrNull("agent.deepseek.apiKey")?.getString()
+                        ?: throw IllegalStateException("DeepSeek API key is not configured")
+                    val baseUrl = environment.config.propertyOrNull("agent.deepseek.baseUrl")?.getString()
+                        ?: "https://api.deepseek.com/v1"
+
+                    logger.info("Initializing AI agent...")
+                    val agentService = AgentService(httpClient, deepseekApiKey, baseUrl)
+                    val integrationService = AgentIntegrationService(agentService, mcpServiceTemp, notificationService)
+                    logger.info("AI agent initialized successfully")
+                    integrationService
+                } else {
+                    logger.info("AI agent is disabled")
+                    null
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to initialize AI agent: ${e.message}", e)
+                null
+            }
+
+            // Scheduler with agent integration
+            val schedulerService = com.bazik.reminder.SchedulerService(
+                taskRepository,
+                notificationService,
+                defaultZoneId,
+                agentIntegrationService
+            )
+
+            // Start scheduler - always start if tasks are enabled
+            // Scheduler will check tasks every minute
             schedulerService.start()
             logger.info("Scheduler started (checks every minute)")
 
-            val existingSchedule = reminderRepository.getNotificationSchedule()
+            val existingSchedule = taskRepository.getNotificationSchedule()
             if (existingSchedule != null && existingSchedule.isEnabled) {
                 logger.info("Notification schedule active: ${existingSchedule.intervalMinutes} minutes")
             }
 
             if (agentIntegrationService != null) {
-                logger.info("Agent task execution enabled - scheduler will process agent tasks")
+                logger.info("Agent task execution enabled - scheduler will process task notifications")
             }
 
-            // ReminderService
-            val service = ReminderService(reminderRepository, schedulerService)
-            logger.info("Reminder service initialized successfully")
+            // TaskService
+            val service = com.bazik.reminder.TaskService(taskRepository, schedulerService)
+            logger.info("Task service initialized successfully")
             service
         } else {
-            logger.info("Reminder services are disabled")
+            logger.info("Task services are disabled")
             null
         }
     } catch (e: Exception) {
-        logger.error("Failed to initialize reminder services: ${e.message}", e)
+        logger.error("Failed to initialize task services: ${e.message}", e)
         null
     }
 
-    // Update MCP service with reminderService
-    val mcpServiceFinal = McpService(weatherService, timeService, reminderService)
+    // Update MCP service with taskService
+    val mcpServiceFinal = McpService(weatherService, timeService, taskService)
 
     routing {
         get("/") {
@@ -153,12 +159,10 @@ fun Application.configureRouting() {
         }
 
         get("/health") {
-            val reminderStatus = if (reminderService != null) "enabled" else "disabled"
-            val agentStatus = if (agentIntegrationService != null) "enabled" else "disabled"
+            val taskStatus = if (taskService != null) "enabled" else "disabled"
             call.respond(mapOf(
                 "status" to "healthy",
-                "reminders" to reminderStatus,
-                "agent" to agentStatus
+                "tasks" to taskStatus
             ))
         }
 

@@ -1,7 +1,7 @@
 package com.bazik.reminder
 
 import com.bazik.agent.AgentIntegrationService
-import com.bazik.time.TimeService
+import com.bazik.reminder.models.TaskSummary
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
@@ -10,10 +10,13 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+/**
+ * SchedulerService - переписан согласно спецификации
+ * Каждую минуту проверяет задачи и отправляет уведомления
+ */
 class SchedulerService(
-    private val reminderRepository: ReminderRepository,
+    private val taskRepository: TaskRepository,
     private val notificationService: NotificationService,
-    private val timeService: TimeService,
     private val defaultZoneId: ZoneId = ZoneId.of("Europe/Moscow"),
     private val agentIntegrationService: AgentIntegrationService? = null
 ) {
@@ -28,15 +31,15 @@ class SchedulerService(
         }
 
         schedulerJob = scope.launch {
-            logger.info("Scheduler started")
+            logger.info("Scheduler started - checking tasks every minute")
 
             while (isActive) {
                 try {
-                    // Проверка и отправка уведомлений
+                    // Проверка и отправка периодических уведомлений (summary)
                     checkAndSendNotifications()
 
-                    // Проверка и выполнение задач агента
-                    checkAndExecuteAgentTasks()
+                    // Новая логика: проверка и обработка задач
+                    checkAndExecuteTaskNotifications()
                 } catch (e: Exception) {
                     logger.error("Error in scheduler loop: ${e.message}", e)
                 }
@@ -52,8 +55,11 @@ class SchedulerService(
         logger.info("Scheduler stopped")
     }
 
+    /**
+     * Проверка периодических уведомлений (summary)
+     */
     private suspend fun checkAndSendNotifications() {
-        val schedule = reminderRepository.getNotificationSchedule()
+        val schedule = taskRepository.getNotificationSchedule()
 
         if (schedule == null || !schedule.isEnabled) {
             return
@@ -71,7 +77,76 @@ class SchedulerService(
         if (shouldSend) {
             logger.info("Time to send summary notification")
             sendSummaryNotification()
-            reminderRepository.updateLastSentAt(schedule.id)
+            taskRepository.updateLastSentAt(schedule.id)
+        }
+    }
+
+    /**
+     * НОВАЯ ЛОГИКА согласно спецификации:
+     * Проверка задач, требующих выполнения, и отправка уведомлений
+     */
+    private suspend fun checkAndExecuteTaskNotifications() {
+        if (agentIntegrationService == null) {
+            logger.debug("AgentIntegrationService not available, skipping task notifications")
+            return
+        }
+
+        try {
+            val now = ZonedDateTime.now(defaultZoneId).toLocalDateTime()
+
+            // Найти все задачи, у которых reminderDateTime <= now и isCompleted = false
+            val tasksToProcess = taskRepository.getTasksToProcess(now)
+
+            if (tasksToProcess.isEmpty()) {
+                return
+            }
+
+            logger.info("Found ${tasksToProcess.size} task(s) ready for notification")
+
+            for (task in tasksToProcess) {
+                try {
+                    logger.info("Processing task notification for #${task.id}: ${task.title}")
+
+                    // Обработать задачу через агента (формирование и отправка уведомления)
+                    val result = agentIntegrationService.processTaskNotification(task)
+
+                    result.onSuccess { summary ->
+                        logger.info("Task notification #${task.id} sent successfully")
+                        logger.debug("Notification content:\n$summary")
+
+                        // Пометить задачу как обработанную
+                        // Если есть recurrence - обновится reminderDateTime
+                        // Если нет recurrence - пометится как завершенная
+                        taskRepository.markTaskAsProcessed(task)
+
+                        if (task.recurrence != null) {
+                            logger.info("Task #${task.id} rescheduled for next occurrence (recurrence: ${task.recurrence})")
+                        } else {
+                            logger.info("Task #${task.id} marked as completed")
+                        }
+                    }.onFailure { error ->
+                        logger.error("Failed to send notification for task #${task.id}: ${error.message}", error)
+
+                        // В случае ошибки можно отправить уведомление об ошибке
+                        val errorMessage = buildString {
+                            appendLine("❌ Failed to send notification for task:")
+                            appendLine("Task: ${task.title}")
+                            appendLine("Error: ${error.message}")
+                        }
+
+                        notificationService.sendNotification(
+                            subject = "Task Notification Failed: ${task.title}",
+                            body = errorMessage
+                        ).onFailure {
+                            logger.debug("Could not send error notification: ${it.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.error("Error processing task notification #${task.id}: ${e.message}", e)
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error in checkAndExecuteTaskNotifications: ${e.message}", e)
         }
     }
 
@@ -94,115 +169,24 @@ class SchedulerService(
         }
     }
 
-    private fun generateSummary(): com.bazik.reminder.models.ReminderSummary {
-        val allReminders = reminderRepository.getAllReminders()
-        val activeReminders = allReminders.filter { it.status == com.bazik.reminder.models.ReminderStatus.ACTIVE }
-        val completedReminders = allReminders.filter { it.status == com.bazik.reminder.models.ReminderStatus.COMPLETED }
-        val overdueReminders = reminderRepository.getOverdueReminders()
-        val upcomingReminders = reminderRepository.getUpcomingReminders(24)
-        val highPriorityReminders = reminderRepository.getHighPriorityReminders()
+    private fun generateSummary(): TaskSummary {
+        val allTasks = taskRepository.getAllTasks()
+        val activeTasks = allTasks.filter { !it.isCompleted }
+        val completedTasks = allTasks.filter { it.isCompleted }
+        val overdueTasks = taskRepository.getOverdueTasks()
+        val upcomingTasks = taskRepository.getUpcomingTasks(24)
+        val highPriorityTasks = taskRepository.getHighPriorityTasks()
 
-        return com.bazik.reminder.models.ReminderSummary(
-            totalReminders = allReminders.size,
-            activeReminders = activeReminders.size,
-            completedReminders = completedReminders.size,
-            overdueReminders = overdueReminders.size,
-            upcomingReminders = upcomingReminders,
-            highPriorityReminders = highPriorityReminders,
+        return TaskSummary(
+            totalTasks = allTasks.size,
+            activeTasks = activeTasks.size,
+            completedTasks = completedTasks.size,
+            overdueTasks = overdueTasks.size,
+            upcomingTasks = upcomingTasks,
+            highPriorityTasks = highPriorityTasks,
             generatedAt = ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         )
     }
 
     fun isRunning(): Boolean = schedulerJob?.isActive == true
-
-    /**
-     * Проверяет базу на наличие задач для агента и выполняет их
-     */
-    private suspend fun checkAndExecuteAgentTasks() {
-        if (agentIntegrationService == null) {
-            return
-        }
-
-        try {
-            val pendingTasks = reminderRepository.getPendingAgentTasks(timeService)
-
-            if (pendingTasks.isEmpty()) {
-                return
-            }
-
-            logger.info("Found ${pendingTasks.size} pending agent task(s) to execute")
-
-            for (task in pendingTasks) {
-                try {
-                    logger.info("Executing agent task #${task.id}: ${task.title}")
-
-                    val taskDescription = buildString {
-                        appendLine("Task: ${task.title}")
-                        appendLine("Description: ${task.description}")
-                        if (task.agentTask != null) {
-                            appendLine("Agent instruction: ${task.agentTask}")
-                        }
-                    }
-
-                    // Выполняем задачу через агента
-                    val result = agentIntegrationService.executeTask(taskDescription)
-
-                    result.onSuccess { resultText ->
-                        logger.info("Agent task #${task.id} completed successfully")
-                        logger.info("Result: $resultText")
-
-                        // Сохраняем результат в базу
-                        reminderRepository.updateExecutionResult(task.id, resultText)
-
-                        // Отправляем уведомление о выполнении задачи (если настроено)
-                        val notification = buildString {
-                            appendLine("✅ Agent Task Completed")
-                            appendLine()
-                            appendLine("Task: ${task.title}")
-                            appendLine("Executed at: ${ZonedDateTime.now(defaultZoneId).toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}")
-                            appendLine()
-                            appendLine("Result:")
-                            appendLine(resultText)
-                        }
-
-                        // Пытаемся отправить уведомление, но не падаем если методы отключены
-                        notificationService.sendNotification(
-                            subject = "Agent Task Completed: ${task.title}",
-                            body = notification
-                        ).onFailure {
-                            logger.debug("Notification not sent for task #${task.id}: notification methods are disabled")
-                        }
-                    }.onFailure { error ->
-                        logger.error("Agent task #${task.id} failed: ${error.message}", error)
-
-                        // Сохраняем ошибку в базу
-                        reminderRepository.updateExecutionResult(
-                            task.id,
-                            "Error: ${error.message}"
-                        )
-
-                        // Отправляем уведомление об ошибке (если настроено)
-                        val notification = buildString {
-                            appendLine("❌ Agent Task Failed")
-                            appendLine()
-                            appendLine("Task: ${task.title}")
-                            appendLine("Error: ${error.message}")
-                        }
-
-                        // Пытаемся отправить уведомление, но не падаем если методы отключены
-                        notificationService.sendNotification(
-                            subject = "Agent Task Failed: ${task.title}",
-                            body = notification
-                        ).onFailure {
-                            logger.debug("Notification not sent for task #${task.id}: notification methods are disabled")
-                        }
-                    }
-                } catch (e: Exception) {
-                    logger.error("Error processing agent task #${task.id}: ${e.message}", e)
-                }
-            }
-        } catch (e: Exception) {
-            logger.error("Error in checkAndExecuteAgentTasks: ${e.message}", e)
-        }
-    }
 }

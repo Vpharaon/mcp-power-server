@@ -1,7 +1,6 @@
 package com.bazik.mcp
 
 import com.bazik.mcp.models.*
-import com.bazik.reminder.ReminderService
 import com.bazik.time.TimeService
 import com.bazik.weather.WeatherService
 import kotlinx.serialization.json.*
@@ -9,7 +8,7 @@ import kotlinx.serialization.json.*
 class McpService(
     private val weatherService: WeatherService,
     private val timeService: TimeService,
-    private val reminderService: ReminderService? = null
+    private val taskService: com.bazik.reminder.TaskService? = null
 ) {
 
     private val tools = buildList {
@@ -65,91 +64,123 @@ class McpService(
         )
         ))
 
-        // Add reminder tools if service is available
-        if (reminderService != null) {
+        // Add task tools if service is available
+        if (taskService != null) {
             addAll(listOf(
                 Tool(
-                    name = "add_reminder",
-                    description = "Create a new reminder with title, description, optional due date and priority",
+                    name = "add_task",
+                    description = "Create a new task with optional title (auto-generated if empty), description, reminder time, optional recurrence and importance",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "title" to PropertySchema(
                                 type = "string",
-                                description = "Short title for the reminder"
+                                description = "Optional short title (if empty, will be auto-generated from description)"
                             ),
                             "description" to PropertySchema(
                                 type = "string",
-                                description = "Detailed description of what needs to be done"
+                                description = "Detailed description of the task"
                             ),
-                            "due_date" to PropertySchema(
+                            "reminder_time" to PropertySchema(
                                 type = "string",
-                                description = "Optional due date in ISO format: 2024-12-17T15:30:00"
+                                description = "Reminder date and time in ISO format: 2024-12-17T15:30:00 (server time)"
                             ),
-                            "priority" to PropertySchema(
+                            "recurrence" to PropertySchema(
                                 type = "string",
-                                description = "Priority level",
+                                description = "Optional recurrence pattern",
+                                enum = listOf("DAILY", "WEEKLY", "MONTHLY")
+                            ),
+                            "importance" to PropertySchema(
+                                type = "string",
+                                description = "Task importance level",
                                 enum = listOf("LOW", "MEDIUM", "HIGH", "URGENT")
                             )
                         ),
-                        required = listOf("title", "description")
+                        required = listOf("description", "reminder_time")
                     )
                 ),
                 Tool(
-                    name = "list_reminders",
-                    description = "List all reminders or filter by status (ACTIVE, COMPLETED, ARCHIVED)",
+                    name = "list_tasks",
+                    description = "List all tasks or filter by status (ACTIVE, COMPLETED)",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "status" to PropertySchema(
                                 type = "string",
                                 description = "Optional status filter",
-                                enum = listOf("ACTIVE", "COMPLETED", "ARCHIVED")
+                                enum = listOf("ACTIVE", "COMPLETED")
                             )
                         ),
                         required = emptyList()
                     )
                 ),
                 Tool(
-                    name = "get_reminder",
-                    description = "Get detailed information about a specific reminder by ID",
+                    name = "get_task",
+                    description = "Get detailed information about a specific task by ID",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "id" to PropertySchema(
                                 type = "number",
-                                description = "Reminder ID"
+                                description = "Task ID"
                             )
                         ),
                         required = listOf("id")
                     )
                 ),
                 Tool(
-                    name = "complete_reminder",
-                    description = "Mark a reminder as completed by ID",
+                    name = "complete_task",
+                    description = "Mark a task as completed by ID",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "id" to PropertySchema(
                                 type = "number",
-                                description = "Reminder ID to complete"
+                                description = "Task ID to complete"
                             )
                         ),
                         required = listOf("id")
                     )
                 ),
                 Tool(
-                    name = "delete_reminder",
-                    description = "Delete a reminder by ID",
+                    name = "delete_task",
+                    description = "Delete a task by ID",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "id" to PropertySchema(
                                 type = "number",
-                                description = "Reminder ID to delete"
+                                description = "Task ID to delete"
                             )
                         ),
                         required = listOf("id")
                     )
                 ),
                 Tool(
-                    name = "get_reminders_summary",
-                    description = "Get a comprehensive summary of all reminders including statistics, overdue items, and high priority tasks",
+                    name = "get_tasks_for_date",
+                    description = "Get all tasks scheduled for a specific date",
+                    inputSchema = InputSchema(
+                        properties = mapOf(
+                            "date" to PropertySchema(
+                                type = "string",
+                                description = "Date in ISO format: 2024-12-17"
+                            )
+                        ),
+                        required = listOf("date")
+                    )
+                ),
+                Tool(
+                    name = "get_tasks_by_importance",
+                    description = "Get all tasks filtered by importance level",
+                    inputSchema = InputSchema(
+                        properties = mapOf(
+                            "importance" to PropertySchema(
+                                type = "string",
+                                description = "Importance level",
+                                enum = listOf("LOW", "MEDIUM", "HIGH", "URGENT")
+                            )
+                        ),
+                        required = listOf("importance")
+                    )
+                ),
+                Tool(
+                    name = "get_tasks_summary",
+                    description = "Get a comprehensive summary of all tasks including statistics, overdue items, and high priority tasks",
                     inputSchema = InputSchema(
                         properties = emptyMap(),
                         required = emptyList()
@@ -277,7 +308,7 @@ class McpService(
                     onFailure = { e -> "Error fetching weather: ${e.message}" }
                 )
             }
-            "get_weather_forecast" -> {
+            "get_current_weather" -> {
                 val city = arguments["city"]?.jsonPrimitive?.content
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: city"))
                 val units = arguments["units"]?.jsonPrimitive?.content ?: "metric"
@@ -299,72 +330,89 @@ class McpService(
                 )
             }
 
-            // Reminder tools
-            "add_reminder" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            // Task tools
+            "add_task" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val title = arguments["title"]?.jsonPrimitive?.content
-                    ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: title"))
                 val description = arguments["description"]?.jsonPrimitive?.content
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: description"))
-                val dueDate = arguments["due_date"]?.jsonPrimitive?.content
-                val priority = arguments["priority"]?.jsonPrimitive?.content ?: "MEDIUM"
+                val reminderTime = arguments["reminder_time"]?.jsonPrimitive?.content
+                    ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: reminder_time"))
+                val recurrence = arguments["recurrence"]?.jsonPrimitive?.content
+                val importance = arguments["importance"]?.jsonPrimitive?.content ?: "MEDIUM"
 
-                reminderService.addReminder(title, description, dueDate, priority)
+                taskService.addTask(title, description, reminderTime, recurrence, importance)
             }
-            "list_reminders" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            "list_tasks" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val status = arguments["status"]?.jsonPrimitive?.content
-                reminderService.listReminders(status)
+                taskService.listTasks(status)
             }
-            "get_reminder" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            "get_task" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val id = arguments["id"]?.jsonPrimitive?.longOrNull
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing or invalid required parameter: id"))
 
-                reminderService.getReminderById(id)
+                taskService.getTaskById(id)
             }
-            "complete_reminder" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            "complete_task" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val id = arguments["id"]?.jsonPrimitive?.longOrNull
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing or invalid required parameter: id"))
 
-                reminderService.completeReminder(id)
+                taskService.completeTask(id)
             }
-            "delete_reminder" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            "delete_task" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val id = arguments["id"]?.jsonPrimitive?.longOrNull
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing or invalid required parameter: id"))
 
-                reminderService.deleteReminder(id)
+                taskService.deleteTask(id)
             }
-            "get_reminders_summary" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+            "get_tasks_for_date" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
-                reminderService.getSummary()
+                val date = arguments["date"]?.jsonPrimitive?.content
+                    ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: date"))
+
+                taskService.getTasksForDate(date)
+            }
+            "get_tasks_by_importance" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
+
+                val importance = arguments["importance"]?.jsonPrimitive?.content
+                    ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing required parameter: importance"))
+
+                taskService.getTasksByImportance(importance)
+            }
+            "get_tasks_summary" -> {
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
+
+                taskService.getSummary()
             }
             "set_notification_schedule" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
                 val intervalMinutes = arguments["interval_minutes"]?.jsonPrimitive?.intOrNull
                     ?: return JsonRpcResponse(id = request.id, error = JsonRpcError(-32602, "Missing or invalid required parameter: interval_minutes"))
                 val enabled = arguments["enabled"]?.jsonPrimitive?.booleanOrNull ?: true
 
-                reminderService.setNotificationSchedule(intervalMinutes, enabled)
+                taskService.setNotificationSchedule(intervalMinutes, enabled)
             }
             "get_notification_schedule" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
-                reminderService.getNotificationSchedule()
+                taskService.getNotificationSchedule()
             }
             "send_test_notification" -> {
-                if (reminderService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Reminder service not available"))
+                if (taskService == null) return JsonRpcResponse(id = request.id, error = JsonRpcError(-32601, "Task service not available"))
 
-                reminderService.sendTestNotification()
+                taskService.sendTestNotification()
             }
 
             else -> "Unknown tool: $toolName"
