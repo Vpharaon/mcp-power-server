@@ -4,12 +4,12 @@ import com.bazik.agent.AgentIntegrationService
 import com.bazik.agent.AgentService
 import com.bazik.mcp.McpService
 import com.bazik.mcp.models.JsonRpcRequest
-import com.bazik.reminder.*
+import com.bazik.reminder.NotificationConfig
+import com.bazik.reminder.NotificationService
 import com.bazik.time.TimeService
 import com.bazik.weather.WeatherService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -72,13 +72,6 @@ fun Application.configureRouting() {
             logger.info("Telegram config: enabled='$telegramEnabledStr', hasToken=${telegramBotToken != null}, hasChatId=${telegramChatId != null}")
 
             val notificationConfig = NotificationConfig(
-                emailEnabled = environment.config.propertyOrNull("notifications.email.enabled")?.getString()?.toBoolean() ?: false,
-                emailSmtpHost = environment.config.propertyOrNull("notifications.email.smtp.host")?.getString(),
-                emailSmtpPort = environment.config.propertyOrNull("notifications.email.smtp.port")?.getString()?.toInt(),
-                emailUsername = environment.config.propertyOrNull("notifications.email.username")?.getString(),
-                emailPassword = environment.config.propertyOrNull("notifications.email.password")?.getString(),
-                emailFrom = environment.config.propertyOrNull("notifications.email.from")?.getString(),
-                emailTo = environment.config.propertyOrNull("notifications.email.to")?.getString(),
                 telegramEnabled = telegramEnabledStr?.toBoolean() ?: false,
                 telegramBotToken = telegramBotToken,
                 telegramChatId = telegramChatId
@@ -86,7 +79,7 @@ fun Application.configureRouting() {
 
             // Notification service
             val notificationService = NotificationService(httpClient, notificationConfig)
-            logger.info("Notification service initialized (Email: ${notificationConfig.emailEnabled}, Telegram: ${notificationConfig.telegramEnabled})")
+            logger.info("Notification service initialized (Telegram: ${notificationConfig.telegramEnabled})")
 
             // Временно создаем MCP и Agent без финального сервиса
             val mcpServiceTemp = McpService(weatherService, timeService, null)

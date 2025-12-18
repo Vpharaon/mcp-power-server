@@ -188,7 +188,7 @@ class McpService(
                 ),
                 Tool(
                     name = "set_notification_schedule",
-                    description = "Configure automatic periodic notifications (email/telegram) with summary of reminders",
+                    description = "Configure automatic periodic notifications (telegram) with summary of reminders",
                     inputSchema = InputSchema(
                         properties = mapOf(
                             "interval_minutes" to PropertySchema(
@@ -213,7 +213,7 @@ class McpService(
                 ),
                 Tool(
                     name = "send_test_notification",
-                    description = "Send a test notification immediately to verify email/telegram configuration",
+                    description = "Send a test notification immediately to verify telegram configuration",
                     inputSchema = InputSchema(
                         properties = emptyMap(),
                         required = emptyList()

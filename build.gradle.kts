@@ -37,9 +37,6 @@ dependencies {
     // Coroutines for scheduling
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
-    // Email support
-    implementation("org.apache.commons:commons-email:1.5")
-
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
 }
